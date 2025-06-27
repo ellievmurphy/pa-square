@@ -14,6 +14,7 @@ keep_alive()
 
 # creates an IO connection to the discord.log file in our project to read and write content
 handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+logging.getLogger("asyncio").setLevel(logging.DEBUG)
 # initialize intent handler
 intents = discord.Intents.default()
 # manually enable the intents we actually need
@@ -23,21 +24,21 @@ intents.members = True
 # initializes a bot that can be given commands with '!' prefix and permissions determined by intents
 bot = commands.Bot(command_prefix='!', intents=intents)
 # initializes the manager for our habitica api and state management
-habitica = HabiticaManager()
+habitica_manager = HabiticaManager()
 
 default_role = "PAPA Follower"
 
 @bot.event
-async def login():
-    await habitica.ensure_session()
+async def on_connect():
+    return habitica_manager.ensure_session()
 
 @bot.event
-async def logout():
-    await habitica.close_session()
+async def on_disconnect():
+    await habitica_manager.close_session()
 
 @bot.event
 async def on_ready():
-    print(f"We are able to go in, {bot.user.name}")
+    print(f"Roll out, {bot.user.name}")
 
 @bot.event
 async def on_member_join(member):
@@ -56,6 +57,13 @@ async def on_message(message):
 @bot.command()
 async def hello(ctx):
     await ctx.send(f"Hello {ctx.author.mention}") # send message in current channel (ctx)
+
+@bot.command()
+async def habitica(ctx):
+    print(f"Checking habitica session...")
+    await habitica_manager.fetch_token()
+    await ctx.send(f"Done!")
+
 
 @bot.command()
 async def assign(ctx):

@@ -3,10 +3,13 @@ import aiohttp
 from dotenv import load_dotenv
 import os
 
+from models.endpoint_consts import TODO_ENDPOINT, FETCH_TOKEN
+
 load_dotenv()
 app_name = os.getenv('APPLICATION_NAME')
-pw = os.getenv('HABITICA_PASSWORD')
-BASE_URL = f"https://api.habitica.com/v3"
+HABITICA_PW = os.getenv('HABITICA_PW')
+HABITICA_USER = os.getenv('HABITICA_USER')
+BASE_URL = os.getenv('HABITICA_BASE_URL')
 
 
 ## Habitica Rules
@@ -18,7 +21,7 @@ class HabiticaManager:
     def __init__(self):
         self.session = None
         self.token = None
-        self.username = None
+        self.username = HABITICA_USER
         self.user_id = None
         self.x_client = None
         self.headers = None
@@ -30,16 +33,16 @@ class HabiticaManager:
         """Set current user Habitica username"""
         self.username = username
     def get_x_client(self):
-        """Get current user's Habitica username"""
+        """Get current user's Habitica x_client id"""
         return self.x_client
     def set_x_client(self, x_client):
-        """Set current user Habitica username"""
+        """Set current user Habitica x_client id"""
         self.x_client = x_client
 
-    async def ensure_session(self):
+    def ensure_session(self):
         """Ensure we have an active aiohttp session"""
         if self.session is None or self.session.closed:
-            # If not, create a store a new client session
+            # If not, create and store a new client session
             if not self.headers:
                 return 404, "No header info available"
             elif not self.x_client:
@@ -55,15 +58,20 @@ class HabiticaManager:
         if self.session and not self.session.closed:
             await self.session.close()
 
-    async def habitica_request(self, endpoint, headers, method="GET", data=None):
+    async def habitica_request(self, endpoint, method="GET", data=None):
         """Make async request to Habitica API"""
-        await self.ensure_session()
+        active_session = self.ensure_session()
+        if active_session[0] != 200 and active_session[0] != 100:
+            return active_session
+
+        if self.token is None or self.user_id is None:
+            await self.fetch_token()
 
         url = f"{BASE_URL}{endpoint}"
 
         try:
             if method == "GET":
-                async with self.session.get(url, headers=headers, data=data) as response:
+                async with self.session.get(url, headers=self.headers, data=data) as response:
                     print(f"Got response from Habitica: {response}")
                     if response.status == 200:
                         return await response.json()
@@ -74,7 +82,7 @@ class HabiticaManager:
                     else:
                         return None, f"API Error: {response.status}"
             if method == "POST":
-                async with self.session.post(url, headers=headers, json=data) as response:
+                async with self.session.post(url, headers=self.headers, json=data) as response:
                     print(f"Got response from Habitica: {response}")
                     if response.status == 201:
                         return await response.json()
@@ -92,29 +100,37 @@ class HabiticaManager:
 
     async def fetch_token(self):
         """Fetch a new token from Habitica"""
-        body = {"username": self.username, "password": pw}
-        async with self.session.post(f"{BASE_URL}/user/auth/local/login", json=body,
-                                     headers={"x-client": x_client}) as response:
+        # Ensure we have a session for the login request
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
+        body = {"username": self.username, "password": HABITICA_PW}
+        async with self.session.post(f"{BASE_URL}{FETCH_TOKEN}", json=body) as response:
             print(f"Got response from Habitica: {response}")
             if response.status == 200:
                 login_body = await response.json()
                 self.token = login_body["apiToken"]
                 self.user_id = login_body["_id"]
+                self.set_x_client(f"{login_body['_id']}-PAPA")
+                self.headers = {"x-client": self.x_client, "x-api-user": self.user_id, "x-api-key": self.token}
 
-    async def create_todo(self, text, type, tags, alias, attribute, checklist, collapse_checklist, notes, date,
+    async def create_todo(self, text, task_type, tags, alias, attribute, checklist, collapse_checklist, notes, date,
                           priority,
                           reminders, frequency, repeat, every_x, streak, days_of_month, weeks_of_month, start_date, up,
                           down, value):
         """Create a to-do task item in Habitica"""
         body = {
-            "text": text, "type": type, "tags": tags, "alias": alias, "attribute": attribute, "checklist": checklist,
+            "text": text, "type": task_type, "tags": tags, "alias": alias, "attribute": attribute, "checklist": checklist,
             "collapse_checklist": collapse_checklist, "notes": notes, "date": date, "priority": priority,
             "reminders": reminders, "frequency": frequency, "repeat": repeat, "every_x": every_x, "streak": streak,
             "days_of_month": days_of_month, "weeks_of_month": weeks_of_month, "start_date": start_date, "up": up,
             "down": down, "value": value
         }
-        self.habitica_request()
+        return await self.habitica_request()
 
-    async def get_todos(self, type, due_date):
-        headers = {"x-client": x_client}
-        params = {"type": type, "due_date": due_date}
+    async def get_todos(self, task_type):
+        params = {"type": task_type}
+        return await self.habitica_request(TODO_ENDPOINT, method="GET", data=params)
+
+
+
