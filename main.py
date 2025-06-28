@@ -4,7 +4,8 @@ import logging
 from dotenv import load_dotenv
 import os
 
-from keep_alive import keep_alive
+from utils.keep_alive import keep_alive
+from models.habitica import HabiticaManager
 
 load_dotenv()
 discord_token = os.getenv("DISCORD_TOKEN") # get discord token
@@ -21,8 +22,18 @@ intents.members = True
 
 # initializes a bot that can be given commands with '!' prefix and permissions determined by intents
 bot = commands.Bot(command_prefix='!', intents=intents)
+# initializes the manager for our habitica api and state management
+habitica = HabiticaManager()
 
 default_role = "PAPA Follower"
+
+@bot.event
+async def login():
+    await habitica.ensure_session()
+
+@bot.event
+async def logout():
+    await habitica.close_session()
 
 @bot.event
 async def on_ready():
