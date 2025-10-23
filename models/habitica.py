@@ -106,12 +106,12 @@ class HabiticaManager:
 
         body = {"username": self.username, "password": HABITICA_PW}
         async with self.session.post(f"{BASE_URL}{FETCH_TOKEN}", json=body) as response:
-            print(f"Got response from Habitica: {response}")
             if response.status == 200:
-                login_body = await response.json()
+                response_json = await response.json()
+                login_body = response_json["data"]
                 self.token = login_body["apiToken"]
-                self.user_id = login_body["_id"]
-                self.set_x_client(f"{login_body['_id']}-PAPA")
+                self.user_id = login_body["id"]
+                self.set_x_client(f"{login_body['id']}-PAPA")
                 self.headers = {"x-client": self.x_client, "x-api-user": self.user_id, "x-api-key": self.token}
 
     async def create_todo(self, text, task_type, tags, alias, attribute, checklist, collapse_checklist, notes, date,
